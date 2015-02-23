@@ -13,7 +13,7 @@ def showtext(text, mode, bright):
 
     bright = int(bright)
     device.brightness(bright)
-    device.show_message(text, font=font.LCD_FONT)
+    device.show_message(text, font=font.SINCLAIRS_FONT)
     device.flush()
 
 def main(argv):
@@ -23,7 +23,7 @@ def main(argv):
     try:
         opts, args = getopt.getopt(argv, "hbt:m", ["text=", "mode=", "bright="])
     except getopt.GetoptError:
-        print 'ledcli.py -t <text> -m <mode>'
+        print 'ledcli.py -t <text> -m <mode> -b <brightness>'
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
