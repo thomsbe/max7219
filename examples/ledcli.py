@@ -2,16 +2,16 @@
 
 import sys
 import getopt
+
 import max7219.font as font
 import max7219.led as led
-import time
 
 
 def showtext(text, mode, bright):
     device = led.matrix(cascaded=1)
     device.flush()
 
-    bright = int(bright)
+    print bright
     device.brightness(bright)
     device.show_message(text, font=font.SINCLAIRS_FONT)
     device.flush()
@@ -19,7 +19,7 @@ def showtext(text, mode, bright):
 def main(argv):
     text = None
     mode = 'rtl'
-    bright = '5'
+    bright = 5
     try:
         opts, args = getopt.getopt(argv, "hbt:m", ["text=", "mode=", "bright="])
     except getopt.GetoptError:
@@ -34,7 +34,7 @@ def main(argv):
         elif opt in ("-m", "--mode"):
             mode = arg
         elif opt in ("-b", "--bright"):
-            bright = arg
+            bright = int(arg)
 
     if mode is None:
         print 'No text given. Stupid.'
