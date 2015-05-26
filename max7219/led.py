@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import spidev
 import time
 
-from max7219.font import CP437_FONT
+from max7219.font import DEFAULT_FONT
 from max7219.rotate8x8 import rotate
 
 
@@ -28,19 +27,21 @@ class constants(object):
 class device(object):
     """
     Base class for handling multiple cascaded MAX7219 devices.
-    Callers should generally pick either the sevensegment or matrix
-    subclasses instead depending on which application is required.
+    Callers should generally pick either the :py:class:`sevensegment` or
+    :py:class:`matrix` subclasses instead depending on which application
+    is required.
 
     A buffer is maintained which holds the bytes that will be cascaded
-    every time flush() is called.
+    every time :py:func:`flush` is called.
     """
     NUM_DIGITS = 8
 
     def __init__(self, cascaded=1, spi_bus=0, spi_device=0):
         """
-        Constructor: cascaded should be the number of cascaded MAX7219
-        devices are connected.
+        Constructor: `cascaded` should be the number of cascaded MAX7219
+        devices that are connected.
         """
+        import spidev
         assert cascaded > 0, "Must have at least one device!"
 
         self._cascaded = cascaded
@@ -56,6 +57,10 @@ class device(object):
         self.clear()
 
     def command(self, register, data):
+        """
+        Sends a specific register some data, replicated for all cascaded
+        devices
+        """
         assert constants.MAX7219_REG_DECODEMODE <= register <= constants.MAX7219_REG_DISPLAYTEST
         self._write([register, data] * self._cascaded)
 
@@ -71,7 +76,7 @@ class device(object):
         A generator which yields the digit/column position and the data
         value from that position for each of the cascaded devices.
         """
-        for deviceId in xrange(self._cascaded):
+        for deviceId in range(self._cascaded):
             yield position + constants.MAX7219_REG_DIGIT0
             yield buf[(deviceId * self.NUM_DIGITS) + position]
 
@@ -89,8 +94,8 @@ class device(object):
             start = deviceId
             end = deviceId + 1
 
-        for deviceId in xrange(start, end):
-            for position in xrange(self.NUM_DIGITS):
+        for deviceId in range(start, end):
+            for position in range(self.NUM_DIGITS):
                 self.set_byte(deviceId,
                               position + constants.MAX7219_REG_DIGIT0,
                               0, redraw=False)
@@ -113,13 +118,15 @@ class device(object):
         # alter it, so make a copy first.
         buf = self._preprocess_buffer(list(self._buffer))
         assert len(buf) == len(self._buffer), "Preprocessed buffer is wrong size"
-        for posn in xrange(self.NUM_DIGITS):
+        for posn in range(self.NUM_DIGITS):
             self._write(self._values(posn, buf))
 
     def brightness(self, intensity):
         """
         Sets the brightness level of all cascaded devices to the same
-        intensity level, ranging from 0..16
+        intensity level, ranging from 0..15. Note that setting the brightness
+        to a high level will draw more current, and may cause intermittent
+        issues / crashes if the USB power source is insufficient.
         """
         assert 0 <= intensity < 16, "Invalid brightness: {0}".format(intensity)
         self.command(constants.MAX7219_REG_INTENSITY, intensity)
@@ -130,12 +137,13 @@ class device(object):
         is not suppled, or set to True, will force a redraw of _all_ buffer
         items: If you are calling this method rapidly/frequently (e.g in a
         loop), it would be more efficient to set to False, and when done,
-        call flush().
+        call :py:func:`flush`.
 
         Prefer to use the higher-level method calls in the subclasses below.
         """
         assert 0 <= deviceId < self._cascaded, "Invalid deviceId: {0}".format(deviceId)
         assert constants.MAX7219_REG_DIGIT0 <= position <= constants.MAX7219_REG_DIGIT7, "Invalid digit/column: {0}".format(position)
+        assert 0 <= value < 256, 'Value {0} outside range 0..255'.format(value)
 
         offset = (deviceId * self.NUM_DIGITS) + position - constants.MAX7219_REG_DIGIT0
         self._buffer[offset] = value
@@ -144,15 +152,27 @@ class device(object):
             self.flush()
 
     def scroll_left(self, redraw=True):
-
+        """
+        Scrolls the buffer one column to the left. Any data that scrolls off
+        the left side is lost and does not re-appear on the right. An empty
+        column is inserted at the right-most position. If redraw
+        is not suppled, or set to True, will force a redraw of _all_ buffer
+        items
+        """
         del self._buffer[0]
         self._buffer.append(0)
         if redraw:
             self.flush()
 
     def scroll_right(self, redraw=True):
-
-        del self._buffer[self.NUM_DIGITS - 1]
+        """
+        Scrolls the buffer one column to the right. Any data that scrolls off
+        the right side is lost and does not re-appear on the left. An empty
+        column is inserted at the left-most position. If redraw
+        is not suppled, or set to True, will force a redraw of _all_ buffer
+        items
+        """
+        del self._buffer[-1]
         self._buffer.insert(0, 0)
         if redraw:
             self.flush()
@@ -166,8 +186,8 @@ class sevensegment(device):
     numbers can be either integers or floating point (with the number of
     decimal points configurable).
     """
-    radix = {8: 'o', 10: 'f', 16: 'x'}
-    digits = {
+    _RADIX = {8: 'o', 10: 'f', 16: 'x'}
+    _DIGITS = {
         ' ': 0x00,
         '-': 0x01,
         '0': 0x7e,
@@ -188,6 +208,16 @@ class sevensegment(device):
         'f': 0x47
     }
 
+    def letter(self, deviceId, position, char, dot=False, redraw=True):
+        """
+        Looks up the most appropriate character representation for char
+        from the digits table, and writes that bitmap value into the buffer
+        at the given deviceId / position.
+        """
+        assert dot in [0, 1, False, True]
+        value = self._DIGITS[str(char)] | (dot << 7)
+        self.set_byte(deviceId, position, value, redraw)
+
     def write_number(self, deviceId, value, base=10, decimalPlaces=0,
                      zeroPad=False, leftJustify=False):
         """
@@ -196,7 +226,7 @@ class sevensegment(device):
         8 digits, then an OverflowError is raised.
         """
         assert 0 <= deviceId < self._cascaded, "Invalid deviceId: {0}".format(deviceId)
-        assert base in self.radix, "Invalid base: {0}".format(base)
+        assert base in self._RADIX, "Invalid base: {0}".format(base)
 
         # Magic up a printf format string
         size = self.NUM_DIGITS
@@ -213,7 +243,7 @@ class sevensegment(device):
 
         formatStr = '{fmt}{size}.{dp}{type}'.format(
                         fmt=formatStr, size=size, dp=decimalPlaces,
-                        type=self.radix[base])
+                        type=self._RADIX[base])
 
         position = constants.MAX7219_REG_DIGIT7
         strValue = formatStr % value
@@ -230,8 +260,7 @@ class sevensegment(device):
                 continue
 
             dp = (decimalPlaces > 0 and position == decimalPlaces + 1)
-            value = self.digits[char] | (dp << 7)
-            self.set_byte(deviceId, position, value, redraw=False)
+            self.letter(deviceId, position, char, dot=dp, redraw=False)
             position -= 1
 
         self.flush()
@@ -248,11 +277,15 @@ class matrix(device):
     _invert = 0
     _orientation = 0
 
-    def letter(self, deviceId, asciiCode, font=CP437_FONT, redraw=True):
+    def letter(self, deviceId, asciiCode, font=None, redraw=True):
         """
         Writes the ASCII letter code to the given device in the specified font.
         """
         assert 0 <= asciiCode < 256
+
+        if not font:
+            font = DEFAULT_FONT
+
         col = constants.MAX7219_REG_DIGIT0
         for value in font[asciiCode]:
             if col > constants.MAX7219_REG_DIGIT7:
@@ -277,16 +310,20 @@ class matrix(device):
         """
         Scrolls the underlying buffer (for all cascaded devices) down one pixel
         """
-        self._buffer = [value << 1 for value in self._buffer]
+        self._buffer = [(value << 1) & 0xff for value in self._buffer]
         if redraw:
             self.flush()
 
-    def show_message(self, text, font=CP437_FONT, delay=0.05):
+    def show_message(self, text, font=None, delay=0.05):
         """
         Transitions the text message across the devices from left-to-right
         """
         # Add some spaces on (same number as cascaded devices) so that the
         # message scrolls off to the left completely.
+
+        if not font:
+            font = DEFAULT_FONT
+
         text += ' ' * self._cascaded
         src = (value for asciiCode in text for value in font[ord(asciiCode)])
 
@@ -300,8 +337,8 @@ class matrix(device):
         """
         Sets (value = 1) or clears (value = 0) the pixel at the given
         co-ordinate. It may be more efficient to batch multiple pixel
-        operations together with redraw=False, and then call flush()
-        to redraw just once.
+        operations together with redraw=False, and then call
+        :py:func:`flush` to redraw just once.
         """
         assert 0 <= x < len(self._buffer)
         assert 0 <= y < self.NUM_DIGITS
@@ -319,9 +356,9 @@ class matrix(device):
         Rotates tiles in the buffer by the given orientation
         """
         result = []
-        for i in xrange(0, self._cascaded * self.NUM_DIGITS, self.NUM_DIGITS):
+        for i in range(0, self._cascaded * self.NUM_DIGITS, self.NUM_DIGITS):
             tile = buf[i:i + self.NUM_DIGITS]
-            for _ in xrange(self._orientation / 90):
+            for _ in range(self._orientation // 90):
                 tile = rotate(tile)
 
             result += tile

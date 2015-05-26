@@ -1,13 +1,27 @@
 #!/usr/bin/env python
 
-import max7219.font as font
 import max7219.led as led
 import time
+from max7219.font import proportional, SINCLAIR_FONT, TINY_FONT, CP437_FONT
 from random import randrange
 
 device = led.matrix(cascaded=1)
 
-device.show_message("MAX7219 LED Matrix Demo")
+device.show_message("MAX7219 LED Matrix Demo", font=proportional(CP437_FONT))
+
+
+time.sleep(1)
+device.show_message("Brightness")
+
+time.sleep(1)
+device.letter(0, ord('A'))
+time.sleep(1)
+for _ in range(5):
+    for intensity in xrange(16):
+        device.brightness(intensity)
+        time.sleep(0.1)
+
+device.brightness(7)
 
 time.sleep(1)
 device.show_message("Orientation")
@@ -19,6 +33,10 @@ for _ in range(5):
     for angle in [0, 90, 180, 270]:
         device.orientation(angle)
         time.sleep(0.2)
+
+for row in range(8):
+    device.scroll_down()
+    time.sleep(0.2)
 
 device.orientation(0)
 time.sleep(1)
@@ -34,7 +52,19 @@ for _ in range(10):
     time.sleep(0.25)
 
 time.sleep(1)
-device.show_message("Alternative font!", font=font.SINCLAIRS_FONT)
+device.show_message("Alternative font!", font=SINCLAIR_FONT)
+
+time.sleep(1)
+device.show_message("Proportional font - characters are squeezed together!", font=proportional(SINCLAIR_FONT))
+
+# http://www.squaregear.net/fonts/tiny.shtml
+time.sleep(1)
+device.show_message(
+"Tiny is, I believe, the smallest possible font \
+(in pixel size). It stands at a lofty four pixels \
+tall (five if you count descenders), yet it still \
+contains all the printable ASCII characters.",
+font=proportional(TINY_FONT))
 
 time.sleep(1)
 device.show_message("CP437 Characters")

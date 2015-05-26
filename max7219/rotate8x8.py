@@ -9,14 +9,14 @@
 #
 
 
-def table(n):
+def _table(n):
     return [x << n for x in [
         0x00000000, 0x00000001, 0x00000100, 0x00000101,
         0x00010000, 0x00010001, 0x00010100, 0x00010101,
         0x01000000, 0x01000001, 0x01000100, 0x01000101,
         0x01010000, 0x01010001, 0x01010100, 0x01010101]]
 
-ltab = [table(i) for i in xrange(7, -1, -1)]
+ltab = [_table(i) for i in range(7, -1, -1)]
 
 
 def rotate(src):
@@ -32,9 +32,9 @@ def rotate(src):
     hi = 0
 
     # Extract
-    for i in xrange(8):
+    for i in range(8):
         value = src[i]
-        assert 0 <= value < 256, 'Value {0} outside range 0..255'.format(value)
+        assert 0 <= value < 256, 'src[{0}] {1} outside range 0..255'.format(i, value)
 
         low |= ltab[i][value & 0x0f]
         hi |= ltab[i][value >> 4]
