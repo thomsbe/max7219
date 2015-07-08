@@ -13,8 +13,9 @@ def showtext(text, mode, bright):
 
     print bright
     device.brightness(bright)
-    device.show_message(text, font=font.SINCLAIRS_FONT)
+    device.show_message(text, font=font.DEFAULT_FONT)
     device.flush()
+
 
 def main(argv):
     text = None
@@ -40,6 +41,7 @@ def main(argv):
         print 'No text given. Stupid.'
     else:
         showtext(text, mode, bright)
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
